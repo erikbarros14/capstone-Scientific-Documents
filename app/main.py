@@ -23,6 +23,8 @@ import pandas as pd
 import chromadb
 import plotly.express as px
 import plotly.graph_objects as go
+from collections import Counter
+import nltk
 
 # Configuração da página
 st.set_page_config(
@@ -30,6 +32,10 @@ st.set_page_config(
     layout="wide",
     page_icon="📚"
 )
+
+# Baixa stopwords uma vez no início
+nltk.download('stopwords')
+from nltk.corpus import stopwords
 
 # Inicialização dos componentes
 @st.cache_resource
@@ -72,6 +78,48 @@ def create_single_document_viz(text, filename):
     )
     return fig
 
+def generate_insights(documents, clusters):
+    """Gera insights automáticos sobre os documentos"""
+    st.subheader("🔍 Insights Descobertos")
+    
+    with st.container():
+        # Análise de clusters
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            unique_clusters = len(set(clusters))
+            if unique_clusters > 1:
+                st.success(f"**{unique_clusters} Grupos Temáticos** identificados")
+            else:
+                st.info("Os documentos formam **um grupo coeso**")
+        
+        with col2:
+            anomaly_count = sum(1 for c in clusters if c == -1)
+            if anomaly_count > 0:
+                st.warning(f"**{anomaly_count} Anomalias** detectadas")
+            else:
+                st.success("Nenhuma anomalia detectada")
+        
+        # Análise de conteúdo
+        st.markdown("### 📊 Estatísticas de Texto")
+        
+        # Palavras mais frequentes
+        words = [word for doc in documents 
+                for word in doc.lower().split() 
+                if word.isalpha() and word not in stopwords.words('portuguese')]
+        
+        if words:
+            common_words = Counter(words).most_common(10)
+            st.bar_chart(dict(common_words), 
+                        use_container_width=True,
+                        color="#4CAF50")
+            
+            # Tamanho médio
+            avg_length = sum(len(doc) for doc in documents) / len(documents)
+            st.metric("Tamanho Médio", f"{avg_length:.0f} caracteres")
+        else:
+            st.warning("Não foi possível analisar o conteúdo textual")
+
 # Página principal
 st.title("📚 Explorador de Documentos Científicos")
 
@@ -81,7 +129,8 @@ with st.sidebar:
     uploaded_files = st.file_uploader(
         "Carregue documentos científicos", 
         type=["pdf", "txt", "csv"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        help="Suporta PDFs com texto, arquivos TXT e CSV"
     )
 
 # Processamento principal
@@ -140,17 +189,14 @@ if uploaded_files:
         
         # Visualização adaptada para 1 documento
         if len(documents) == 1:
-            # Visualização do Documento
             st.subheader("Visualização do Documento")
             fig = create_single_document_viz(documents[0], metadatas[0]["source"])
             st.plotly_chart(fig, use_container_width=True)
             
-            # Conteúdo do Documento
             st.subheader("Conteúdo Completo")
             with st.expander(f"📄 {metadatas[0]['source']} - {metadatas[0]['length']} caracteres"):
                 st.text(documents[0])
             
-            # Busca Semântica
             st.subheader("Busca no Documento")
             query = st.text_input("Pesquise conceitos no documento:")
             if query:
@@ -158,10 +204,15 @@ if uploaded_files:
                 for res in results:
                     st.write(f"**Trecho relevante:**")
                     st.text(res['content'][:500] + "...")
+            
+            st.info("🔍 Para insights mais profundos, adicione mais documentos")
         
         else:
-            # Processamento normal para múltiplos documentos
+            # Processamento para múltiplos documentos
             clusters, reduced_embeddings, anomalies = clusterer.process_documents(embeddings)
+            
+            # Geração de insights
+            generate_insights(documents, clusters)
             
             # Visualização 3D
             st.subheader("Visualização Interativa dos Clusters")
@@ -180,8 +231,8 @@ if uploaded_files:
             st.metric("Documentos processados", len(documents))
             st.metric("Tipo principal", metadatas[0]["type"])
             
-            if len(documents) > 1:
-                st.metric("Clusters identificados", len(set(clusters)) if 'clusters' in locals() else 1)
+            if len(documents) > 1 and 'clusters' in locals():
+                st.metric("Clusters identificados", len(set(clusters)))
             
             # Limpeza
             shutil.rmtree(temp_dir)
@@ -194,12 +245,14 @@ else:
         ## Bem-vindo ao Explorador de Documentos Científicos
             
         **Como usar:**
-        1. Carregue um ou mais documentos
-        2. Visualize o conteúdo
-        3. Explore relações com busca semântica
+        1. Carregue documentos científicos
+        2. Explore relações entre conteúdos
+        3. Descubra insights automáticos
         """)
+        st.info("Experimente carregar PDFs, TXT ou CSV com conteúdo textual")
     with col2:
-        st.image("https://images.unsplash.com/photo-1507842217343-583bb7270b66?ixlib=rb-1.2.1&auto=format&fit=crop&w=1000&q=80")
+        st.image("https://images.unsplash.com/photo-1507842217343-583bb7270b66?ixlib=rb-1.2.1&auto=format&fit=crop&w=1000&q=80",
+               caption="Análise inteligente de documentos")
 
 st.markdown("---")
-st.caption("🔍 Sistema de análise de documentos científicos")
+st.caption("🔍 Sistema de análise de documentos científicos | v1.0")

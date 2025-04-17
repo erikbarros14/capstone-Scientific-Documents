@@ -1,6 +1,7 @@
 import sys
 import os
 from pathlib import Path
+import plotly.graph_objects as go
 import asyncio
 import torch
 torch.set_num_threads(1)
@@ -50,7 +51,8 @@ def load_components():
             name="scientific_papers",
             metadata={"hnsw:space": "cosine"}
         )
-    searcher = SemanticSearcher(collection)
+    # Agora o SemanticSearcher é independente
+    searcher = SemanticSearcher(collection)  
     return ingestor, clusterer, collection, searcher
 
 ingestor, clusterer, collection, searcher = load_components()
@@ -119,6 +121,73 @@ def generate_insights(documents, clusters):
             st.metric("Tamanho Médio", f"{avg_length:.0f} caracteres")
         else:
             st.warning("Não foi possível analisar o conteúdo textual")
+
+def show_search_results_with_clusters(query, searcher, documents, clusters, reduced_embeddings):
+    """Mostra resultados da busca com visualização de clusters associados"""
+    results = searcher.search(query)  # Agora usa o searcher autossuficiente
+    
+    if not results:
+        st.warning("Nenhum resultado encontrado")
+        return
+    
+    # Identifica os índices dos documentos encontrados
+    result_indices = [documents.index(res['content']) for res in results if res['content'] in documents]
+    
+    if not result_indices:
+        st.warning("Documentos encontrados não estão na lista atual")
+        return
+    
+    # Obtém os clusters dos resultados
+    result_clusters = [clusters[i] for i in result_indices]
+    unique_clusters = set(result_clusters)
+    
+    # Mostra resumo
+    st.success(f"🔍 {len(results)} resultados encontrados nos clusters: {', '.join(map(str, unique_clusters))}")
+    
+    # Cria máscara para filtro
+    mask = np.isin(clusters, list(unique_clusters))
+    
+    # Prepara dados para visualização
+    viz_data = pd.DataFrame({
+        'x': reduced_embeddings[:, 0],
+        'y': reduced_embeddings[:, 1],
+        'z': reduced_embeddings[:, 2],
+        'cluster': clusters,
+        'is_result': [i in result_indices for i in range(len(documents))],
+        'text': [doc[:100] + "..." for doc in documents]
+    })
+    
+    # Visualização interativa
+    fig = px.scatter_3d(
+        viz_data,
+        x='x',
+        y='y',
+        z='z',
+        color='cluster',
+        symbol='is_result',
+        symbol_map={True: 'circle', False: 'circle-open'},
+        hover_data=['text'],
+        title=f'Clusters com resultados para: "{query}"'
+    )
+    
+    # Destaca os pontos de resultado
+    fig.update_traces(
+        marker=dict(
+            size=8,
+            opacity=0.8,
+            line=dict(width=2, color='DarkSlateGrey')
+        ),
+        selector=dict(mode='markers')
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Mostra os resultados em detalhe
+    st.subheader("📄 Documentos Encontrados")
+    for i, res in enumerate(results):
+        with st.expander(f"Resultado {i+1} (Cluster {clusters[documents.index(res['content'])]})"):
+            st.write(f"**Fonte:** {res['source']}")
+            st.text(res['content'][:500] + "...")
 
 # Página principal
 st.title("📚 Explorador de Documentos Científicos")
@@ -219,6 +288,20 @@ if uploaded_files:
             fig = clusterer.visualize_clusters(reduced_embeddings, clusters, documents, anomalies)
             st.plotly_chart(fig, use_container_width=True)
             
+            # Busca Semântica com Cluster
+            st.markdown("---")
+            st.subheader("🔍 Busca Semântica Avançada")
+            search_query = st.text_input("Pesquise conceitos relacionados:")
+            
+            if search_query:
+             show_search_results_with_clusters(
+             search_query,
+             searcher,  # Agora só precisa do searcher
+             documents,
+             clusters,
+             reduced_embeddings
+                )
+            
             # Lista de Documentos
             st.subheader("Documentos Processados")
             for idx, (doc, meta) in enumerate(zip(documents, metadatas)):
@@ -248,6 +331,7 @@ else:
         1. Carregue documentos científicos
         2. Explore relações entre conteúdos
         3. Descubra insights automáticos
+        4. Use busca semântica para encontrar conceitos
         """)
         st.info("Experimente carregar PDFs, TXT ou CSV com conteúdo textual")
     with col2:
@@ -255,4 +339,4 @@ else:
                caption="Análise inteligente de documentos")
 
 st.markdown("---")
-st.caption("🔍 Sistema de análise de documentos científicos | v1.0")
+st.caption("🔍 Sistema de análise de documentos científicos | v2.0")

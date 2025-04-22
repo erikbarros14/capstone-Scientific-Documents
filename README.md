@@ -36,7 +36,7 @@ Instalação
 Clone o repositório:
 
 bash
-git clone https://github.com/seu-usuario/scientific-documents-explorer.git
+git clone https://github.com/erikbarros14/capstone-Scientific-Documents/tree/main
 cd scientific-documents-explorer
 Crie e ative um ambiente virtual (recomendado):
 

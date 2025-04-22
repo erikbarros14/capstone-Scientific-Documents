@@ -30,7 +30,7 @@ class DocumentClusterer:
 
     def process_documents(self, embeddings: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Processamento adaptado para poucos documentos"""
-        if len(embeddings) <= 2:  # Caso especial para 1-2 documentos
+        if len(embeddings) <= 5:  # Caso especial para 1-2 documentos
             clusters = np.zeros(len(embeddings), dtype=int)
             reduced_embeddings = np.random.rand(len(embeddings), 3) * 0.1  # Pequena variação
             anomalies = np.ones(len(embeddings))
@@ -58,8 +58,16 @@ class DocumentClusterer:
 
     def reduce_dimensions(self, embeddings: np.ndarray) -> np.ndarray:
         """Redução de dimensionalidade robusta"""
-        if len(embeddings) <= 5:  # Ajuste especial para poucos docs
-            self.reducer.n_neighbors = max(1, len(embeddings) - 1)
+        n_samples = len(embeddings)
+        n_neighbors = max(1, min(n_samples - 1, self.reducer.n_neighbors))
+
+        self.reducer = umap.UMAP(
+            n_components=3,
+        random_state=42,
+        n_neighbors=n_neighbors,
+        min_dist=0.1,
+        metric='cosine'
+        )
         return self.reducer.fit_transform(embeddings)
 
     def visualize_clusters(self, reduced_embeddings, clusters, documents, anomalies=None):
